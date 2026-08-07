@@ -1,8 +1,3 @@
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.text.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -11,6 +6,11 @@ import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.text.*;
 
 /**
  * ChatWindow.java
@@ -426,9 +426,24 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
 
         // Um único clique seleciona o usuário e ABRE a conversa com ele
         // (o histórico é solicitado dentro de abrirConversa()).
-        listaUsuarios.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting() && listaUsuarios.getSelectedValue() != null) {
-                abrirConversa(listaUsuarios.getSelectedValue().nome, false);
+        //
+        // CORREÇÃO DE BUG: antes isso era feito com um ListSelectionListener,
+        // que só dispara quando o ÍNDICE selecionado muda. Se o usuário já
+        // estava selecionado nesta lista (por ex. antes de você ter ido ver
+        // um grupo), clicar nele de novo não muda o índice selecionado e o
+        // evento simplesmente não disparava — a conversa parecia "travada".
+        // Usar o clique do mouse diretamente garante que a conversa sempre
+        // reabre, independentemente da seleção anterior.
+        listaUsuarios.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int indice = listaUsuarios.locationToIndex(e.getPoint());
+                if (indice < 0 || !listaUsuarios.getCellBounds(indice, indice).contains(e.getPoint())) {
+                    return;
+                }
+                Client.UsuarioInfo usuario = modeloListaUsuarios.getElementAt(indice);
+                listaUsuarios.setSelectedIndex(indice);
+                abrirConversa(usuario.nome, false);
             }
         });
 
@@ -531,9 +546,19 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
 
         // Um único clique seleciona o grupo e ABRE a conversa do grupo
         // (o histórico é solicitado dentro de abrirConversa()).
-        listaGrupos.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting() && listaGrupos.getSelectedValue() != null) {
-                abrirConversa(listaGrupos.getSelectedValue(), true);
+        // Mesma correção de bug aplicada à lista de usuários: usar o clique
+        // do mouse em vez de ListSelectionListener, para que clicar num
+        // grupo já selecionado anteriormente também reabra a conversa.
+        listaGrupos.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int indice = listaGrupos.locationToIndex(e.getPoint());
+                if (indice < 0 || !listaGrupos.getCellBounds(indice, indice).contains(e.getPoint())) {
+                    return;
+                }
+                String grupo = modeloListaGrupos.getElementAt(indice);
+                listaGrupos.setSelectedIndex(indice);
+                abrirConversa(grupo, true);
             }
         });
 
@@ -559,11 +584,37 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
         String nomeGrupo = JOptionPane.showInputDialog(this,
                 "Nome do novo grupo:", "Criar grupo", JOptionPane.PLAIN_MESSAGE);
 
-        if (nomeGrupo != null && !nomeGrupo.trim().isEmpty()) {
-            // TODO (CONEXÃO FUTURA): client.criarGrupo() hoje apenas
-            // simula a criação localmente — ver Client.java.
-            client.criarGrupo(nomeGrupo.trim());
+        if (nomeGrupo == null) {
+            return;
         }
+        nomeGrupo = nomeGrupo.trim();
+        if (nomeGrupo.isEmpty()) {
+            return;
+        }
+        if (!nomeGrupoValido(nomeGrupo)) {
+            return;
+        }
+
+        client.criarGrupo(nomeGrupo);
+    }
+
+    /**
+     * Valida um identificador de grupo antes de enviá-lo ao servidor.
+     * O protocolo (GCREATE/GJOIN/GMSG/GHISTORY) é separado por espaços e
+     * trata o nome do grupo como um único token — um nome com espaços
+     * (ex.: "Equipe Dev") faz o servidor interpretar só a primeira palavra
+     * como identificador do grupo, corrompendo o roteamento das mensagens
+     * para os demais membros. Por isso barramos espaços aqui.
+     */
+    private boolean nomeGrupoValido(String nomeGrupo) {
+        if (nomeGrupo.chars().anyMatch(Character::isWhitespace)) {
+            JOptionPane.showMessageDialog(this,
+                    "O nome do grupo não pode conter espaços.\n" +
+                            "Use, por exemplo, \"equipe-dev\" ou \"equipe_dev\".",
+                    "Nome de grupo inválido", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+        return true;
     }
 
     private void aoClicarEntrarGrupo() {
@@ -577,11 +628,18 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
         String identificador = JOptionPane.showInputDialog(this,
                 "Nome ou código de convite do grupo:", "Entrar em grupo", JOptionPane.PLAIN_MESSAGE);
 
-        if (identificador != null && !identificador.trim().isEmpty()) {
-            // TODO (CONEXÃO FUTURA): client.entrarGrupo() hoje apenas
-            // simula a entrada localmente — ver Client.java.
-            client.entrarGrupo(identificador.trim());
+        if (identificador == null) {
+            return;
         }
+        identificador = identificador.trim();
+        if (identificador.isEmpty()) {
+            return;
+        }
+        if (!nomeGrupoValido(identificador)) {
+            return;
+        }
+
+        client.entrarGrupo(identificador);
     }
 
     /** Filtra a lista de grupos conforme o texto digitado no campo de busca. */
@@ -790,6 +848,19 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
             JOptionPane.showMessageDialog(this,
                     "Selecione um usuário ou grupo à esquerda antes de anexar um arquivo.",
                     "Nenhuma conversa selecionada", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        if (conversaAtualEhGrupo) {
+            // BUG IDENTIFICADO: o protocolo só define "FILE <destinatario> ..."
+            // para envio a um usuário — não existe um comando equivalente para
+            // grupos (ex.: "GFILE"). Enviar mesmo assim faria o Client tratar o
+            // nome do grupo como se fosse um usuário, e o arquivo provavelmente
+            // se perderia ou falharia silenciosamente no servidor. Até que o
+            // protocolo suporte isso, bloqueamos aqui em vez de falhar sem avisar.
+            JOptionPane.showMessageDialog(this,
+                    "O envio de arquivos para grupos ainda não é suportado pelo protocolo atual.\n" +
+                            "Envie o arquivo para os membros individualmente por enquanto.",
+                    "Não suportado", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
