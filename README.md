@@ -46,8 +46,9 @@ Requer JDK 11 ou superior (testado com JDK 17).
 ```bash
 cd src
 javac -encoding UTF-8 -d ../bin Main.java ChatWindow.java Client.java FileManager.java
-java -cp ../bin Main
+java -cp ../bin Main [porta] [dominio]
 ```
+Entre colchetes tem parametros opcionais. A porta padrao é a 5000 e o domini padrao é localhost.
 
 > **Importante:** use sempre `-encoding UTF-8` ao compilar, pois o
 > código contém comentários e textos em português com acentuação.
