@@ -1,0 +1,3 @@
+# ignore paradas da compilacao
+bin/
+src/downloads_nexus/
