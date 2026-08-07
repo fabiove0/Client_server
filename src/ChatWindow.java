@@ -82,6 +82,9 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
     // ---- Componentes principais ----
     private final Client client;
     private final FileManager fileManager = new FileManager();
+    private String commandLineArgs[];
+    private String domainId;
+    private int port;
 
     // Barra superior — status
     private JLabel statusDot;
@@ -142,9 +145,10 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
     // mesmo nome.
     private final Map<String, List<MensagemRegistrada>> conversas = new LinkedHashMap<>();
 
-    public ChatWindow(Client client) {
+    public ChatWindow(Client client, String args[]) {
         super("NEXUS.gov — Comunicação Corporativa");
         this.client = client;
+        this.commandLineArgs = args;
 
         configurarJanela();
         initComponents();
@@ -726,10 +730,28 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
         // em outra máquina (ex.: "servidor.nexus.gov") ou outra porta.
         // Por padrão aponta para um servidor rodando localmente (ServerMain),
         // que usa a porta 5000 quando nenhuma é informada nos argumentos.
-        String host = "localhost";
-        int porta = 5000;
 
-        client.conectarServidor(host, porta, usuario, senha, orgao);
+        checkDomainIdAndPort();
+
+        client.conectarServidor(this.domainId, this.port, usuario, senha, orgao);
+    }
+
+    private void checkDomainIdAndPort() {
+        this.domainId = "localhost";
+        this.port = 5000;
+        if (commandLineArgs.length > 0) {
+            try {
+                this.port = Integer.parseInt(commandLineArgs[0]);
+            } catch (NumberFormatException e) {
+                JOptionPane.showMessageDialog(this,
+                        "Porta inválida. Use um número inteiro.",
+                        "Erro", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+
+        if (commandLineArgs.length > 1) {
+            this.domainId = commandLineArgs[1];
+        }
     }
 
     private void aoClicarEnviar() {

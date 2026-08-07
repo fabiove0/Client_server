@@ -15,7 +15,7 @@ public class Main {
 
         SwingUtilities.invokeLater(() -> {
             Client client = new Client();
-            ChatWindow janela = new ChatWindow(client);
+            ChatWindow janela = new ChatWindow(client, args);
             client.setListener(janela);
             janela.setLocationRelativeTo(null);
             janela.setVisible(true);
