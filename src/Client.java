@@ -48,6 +48,14 @@ public class Client {
     private PrintWriter saida;        // escrita de linhas de texto sobre saidaBruta
     private final Object travaEscrita = new Object();
     private Thread threadEscuta;
+    private Thread threadAtualizacaoListas;
+
+    // Intervalo entre atualizações automáticas de LIST/GLIST. O protocolo
+    // não prevê um "push" do servidor avisando login/logout de outros
+    // usuários ou criação de grupos por terceiros, então o cliente precisa
+    // reconsultar periodicamente — do contrário a lista lateral só é
+    // atualizada quando o próprio usuário desloga e loga novamente.
+    private static final long INTERVALO_ATUALIZACAO_LISTAS_MS = 4000;
 
     private String usuarioAtual;
     private String orgaoAtual;
@@ -172,6 +180,14 @@ public class Client {
                 // Solicita os dados iniciais de contexto (usuários online e grupos).
                 enviarLinha("LIST");
                 enviarLinha("GLIST");
+
+                // Inicia a atualização periódica das listas (ver comentário no
+                // campo INTERVALO_ATUALIZACAO_LISTAS_MS) — corrige o bug em que
+                // um usuário já logado não via novos usuários/grupos aparecerem
+                // na lateral até deslogar e logar de novo.
+                threadAtualizacaoListas = new Thread(this::atualizarListasPeriodicamente, "nexus-thread-refresh-listas");
+                threadAtualizacaoListas.setDaemon(true);
+                threadAtualizacaoListas.start();
             } else {
                 fecharRecursos();
                 if (listener != null) {
@@ -211,6 +227,27 @@ public class Client {
     }
 
     /**
+     * Loop contínuo (executado em thread dedicada) que, enquanto conectado,
+     * reconsulta periodicamente LIST/GLIST junto ao servidor. As respostas
+     * chegam de forma assíncrona pela thread de escuta normal e disparam
+     * onListaUsuariosAtualizada/onListaGruposAtualizada como sempre.
+     */
+    private void atualizarListasPeriodicamente() {
+        try {
+            while (conectado) {
+                Thread.sleep(INTERVALO_ATUALIZACAO_LISTAS_MS);
+                if (!conectado) {
+                    break;
+                }
+                enviarLinha("LIST");
+                enviarLinha("GLIST");
+            }
+        } catch (InterruptedException ignored) {
+            // Encerramento normal ao desconectar.
+        }
+    }
+
+    /**
      * Loop contínuo (executado em thread dedicada) que lê o stream de
      * entrada do socket e repassa cada evento recebido ao listener.
      */
@@ -225,6 +262,9 @@ public class Client {
         } finally {
             boolean estavaConectado = conectado;
             conectado = false;
+            if (threadAtualizacaoListas != null) {
+                threadAtualizacaoListas.interrupt();
+            }
             fecharRecursos();
             if (estavaConectado && listener != null) {
                 listener.onStatusConexaoAlterado(false, "Conexão perdida com o servidor");
@@ -455,6 +495,9 @@ public class Client {
             enviarLinha("QUIT");
         }
         conectado = false;
+        if (threadAtualizacaoListas != null) {
+            threadAtualizacaoListas.interrupt();
+        }
         fecharRecursos();
         if (listener != null) {
             listener.onStatusConexaoAlterado(false, "Desconectado");
