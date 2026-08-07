@@ -1,0 +1,79 @@
+/* =============================================================
+   style.css — Referência de identidade visual (design tokens)
+   =============================================================
+   ATENÇÃO: este projeto usa Java Swing puro para a interface
+   gráfica. O Swing NÃO interpreta arquivos CSS — a estilização
+   real (cores, fontes, cantos arredondados) está implementada em
+   Java, na classe interna ChatWindow.Theme (ChatWindow.java).
+
+   Este arquivo existe como DOCUMENTAÇÃO/ESPELHO da paleta usada,
+   servindo de referência para:
+     - Designers que queiram validar a identidade visual;
+     - Uma futura versão web (ex.: Electron/JavaFX WebView) do
+       mesmo sistema, que já poderia reaproveitar estes tokens.
+
+   Qualquer alteração de cor deve ser replicada também em
+   ChatWindow.Theme para manter as duas fontes sincronizadas.
+   ============================================================= */
+
+:root {
+  /* Fundo */
+  --bg-primary:   #12141B;  /* fundo geral da janela */
+  --bg-surface:   #1A1D23;  /* painéis (topo, lateral, chat) */
+  --bg-elevated:  #22262E;  /* botões secundários, cartões */
+  --bg-input:     #1E2229;  /* campos de texto */
+  --border-subtle:#2A2E37;
+
+  /* Cor de marca / ação principal */
+  --accent:        #2E86FF;
+  --accent-hover:  #1E6FE0;
+  --accent-soft:   #223A5C;
+
+  /* Estados */
+  --success: #3DDC97; /* conectado / usuário online */
+  --danger:  #E55A5A; /* desconectado / erro */
+  --warning: #E8B44C; /* alertas (ex.: arquivo grande) */
+
+  /* Texto */
+  --text-primary:   #F2F3F5;
+  --text-secondary: #9AA1AC;
+  --text-muted:     #6B727D;
+
+  /* Formas */
+  --radius-lg: 16px; /* painéis principais */
+  --radius-md: 12px; /* botões */
+  --radius-sm: 8px;  /* campos de texto */
+
+  /* Tipografia (equivalente a "Segoe UI" usada no Java) */
+  --font-family: "Segoe UI", "Inter", "Roboto", sans-serif;
+  --font-brand: 700 18px var(--font-family);
+  --font-title: 700 14px var(--font-family);
+  --font-body:  400 13px var(--font-family);
+  --font-small: 400 11px var(--font-family);
+}
+
+/* Exemplo ilustrativo de como os tokens acima se aplicariam
+   em uma futura versão web — não utilizado pelo cliente Swing. */
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: var(--font-body);
+}
+
+.top-bar {
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+  border-radius: var(--radius-md);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.status-online  { color: var(--success); }
+.status-offline { color: var(--danger); }
