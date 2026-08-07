@@ -802,8 +802,10 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
         // do FileManager; só registramos na conversa se o envio for confirmado.
         boolean enviado = fileManager.confirmarEEnviarArquivo(this, arquivo, client, conversaAtual);
         if (enviado) {
+            // Usa o caminho ABSOLUTO para que o cartão de arquivo consiga localizar
+            // o arquivo original no disco do remetente.
             registrarEExibirMensagem(conversaAtual, conversaAtualEhGrupo,
-                    client.getUsuarioAtual(), arquivo.getName(), true, true);
+                    client.getUsuarioAtual(), arquivo.getAbsolutePath(), true, true);
         }
     }
 
@@ -906,15 +908,23 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
             StyleConstants.setForeground(estiloHora, Theme.TEXT_MUTED);
             StyleConstants.setFontSize(estiloHora, 11);
 
-            SimpleAttributeSet estiloTexto = new SimpleAttributeSet();
-            StyleConstants.setForeground(estiloTexto, m.arquivo ? Theme.TEXT_SECONDARY : Theme.TEXT_PRIMARY);
-            StyleConstants.setItalic(estiloTexto, m.arquivo);
-
-            String prefixoTexto = m.arquivo ? "📎 Arquivo enviado: " + m.texto : m.texto;
-
             documentoMensagens.insertString(documentoMensagens.getLength(), m.remetente + "  ", estiloRemetente);
             documentoMensagens.insertString(documentoMensagens.getLength(), m.hora + "\n", estiloHora);
-            documentoMensagens.insertString(documentoMensagens.getLength(), prefixoTexto + "\n\n", estiloTexto);
+
+            if (m.arquivo) {
+                // Insere o cartão interativo diretamente no fluxo de texto do JTextPane.
+                File arquivoResolvido = fileManager.resolverArquivo(m.texto);
+                PainelCartaoArquivo cartao = new PainelCartaoArquivo(arquivoResolvido, m.texto, m.propria);
+                SimpleAttributeSet estiloComp = new SimpleAttributeSet();
+                StyleConstants.setComponent(estiloComp, cartao);
+                // O espaço em branco é substituído visualmente pelo componente.
+                documentoMensagens.insertString(documentoMensagens.getLength(), " ", estiloComp);
+                documentoMensagens.insertString(documentoMensagens.getLength(), "\n\n", new SimpleAttributeSet());
+            } else {
+                SimpleAttributeSet estiloTexto = new SimpleAttributeSet();
+                StyleConstants.setForeground(estiloTexto, Theme.TEXT_PRIMARY);
+                documentoMensagens.insertString(documentoMensagens.getLength(), m.texto + "\n\n", estiloTexto);
+            }
 
             areaMensagens.setCaretPosition(documentoMensagens.getLength());
         } catch (BadLocationException ex) {
@@ -1295,6 +1305,130 @@ public class ChatWindow extends JFrame implements Client.MessageListener {
             nome.setForeground(Theme.TEXT_PRIMARY);
             bolinhaNaoLida.setVisible(gruposComNaoLidas.contains(value));
             return this;
+        }
+    }
+
+    // =================================================================
+    //  CARTÃO INTERATIVO DE ARQUIVO — exibido no chat no lugar do
+    //  texto estático antigo ("📎 Arquivo enviado: nome").
+    // =================================================================
+
+    /**
+     * Painel visual embutido diretamente no JTextPane via StyleConstants.setComponent.
+     * Exibe o nome do arquivo, o tamanho em disco e três botões de ação:
+     * "Abrir" (no app padrão do SO), "Salvar Como..." e "Pasta" (abre o
+     * gerenciador de arquivos na pasta que contém o arquivo).
+     */
+    class PainelCartaoArquivo extends JPanel {
+        private final Color corFundo;
+        private final Color corBorda;
+
+        PainelCartaoArquivo(File arquivo, String textoOriginal, boolean propria) {
+            corFundo = propria ? Theme.ACCENT_SOFT : Theme.BG_ELEVATED;
+            corBorda = propria ? Theme.ACCENT     : Theme.BORDER_SUBTLE;
+
+            setOpaque(false);
+            setLayout(new BorderLayout(10, 0));
+            setBorder(new EmptyBorder(10, 14, 10, 14));
+            setPreferredSize(new Dimension(420, 64));
+            setMaximumSize(new Dimension(420, 64));
+
+            // --- Ícone de clipe (desenhado vetorialmente) ---
+            JLabel iconeClipe = new JLabel() {
+                @Override
+                protected void paintComponent(Graphics g) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(Theme.ACCENT);
+                    g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.translate(getWidth() / 2, getHeight() / 2);
+                    g2.rotate(Math.toRadians(45));
+                    g2.draw(new RoundRectangle2D.Float(-4f, -10f, 8f, 20f, 8f, 8f));
+                    g2.dispose();
+                }
+            };
+            iconeClipe.setPreferredSize(new Dimension(24, 24));
+
+            // --- Nome e tamanho do arquivo ---
+            String nomeExibido = arquivo.getName();
+            if (nomeExibido.length() > 36) {
+                nomeExibido = nomeExibido.substring(0, 33) + "...";
+            }
+
+            String tamanhoTexto;
+            if (arquivo.exists()) {
+                long bytes = arquivo.length();
+                if (bytes < 1024)            tamanhoTexto = bytes + " B";
+                else if (bytes < 1024*1024)  tamanhoTexto = (bytes / 1024) + " KB";
+                else                         tamanhoTexto = String.format("%.1f MB", bytes / (1024.0*1024));
+            } else {
+                tamanhoTexto = "Arquivo recebido";
+            }
+
+            JLabel lbNome = new JLabel(nomeExibido);
+            lbNome.setFont(Theme.FONT_BODY);
+            lbNome.setForeground(Theme.TEXT_PRIMARY);
+
+            JLabel lbTamanho = new JLabel(tamanhoTexto);
+            lbTamanho.setFont(Theme.FONT_SMALL);
+            lbTamanho.setForeground(Theme.TEXT_MUTED);
+
+            JPanel textos = new JPanel();
+            textos.setOpaque(false);
+            textos.setLayout(new BoxLayout(textos, BoxLayout.Y_AXIS));
+            textos.add(lbNome);
+            textos.add(lbTamanho);
+
+            JPanel esquerda = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            esquerda.setOpaque(false);
+            esquerda.add(iconeClipe);
+            esquerda.add(textos);
+
+            // --- Botões de ação ---
+            RoundedButton btnAbrir = new RoundedButton("Abrir", Theme.ACCENT, Theme.ACCENT_HOVER, Color.WHITE);
+            btnAbrir.setFont(Theme.FONT_SMALL);
+            btnAbrir.setBorder(new EmptyBorder(4, 10, 4, 10));
+            btnAbrir.setToolTipText("Abrir arquivo no aplicativo padrão");
+            btnAbrir.addActionListener(e ->
+                    fileManager.abrirArquivo(SwingUtilities.getWindowAncestor(PainelCartaoArquivo.this), arquivo));
+
+            RoundedButton btnSalvar = new RoundedButton("Salvar", Theme.BG_ELEVATED, Theme.BORDER_SUBTLE, Theme.TEXT_PRIMARY);
+            btnSalvar.setFont(Theme.FONT_SMALL);
+            btnSalvar.setBorder(new EmptyBorder(4, 10, 4, 10));
+            btnSalvar.setToolTipText("Salvar cópia do arquivo em outro local");
+            btnSalvar.addActionListener(e ->
+                    fileManager.salvarComo(SwingUtilities.getWindowAncestor(PainelCartaoArquivo.this), arquivo));
+
+            RoundedButton btnPasta = new RoundedButton("Pasta", Theme.BG_ELEVATED, Theme.BORDER_SUBTLE, Theme.TEXT_PRIMARY);
+            btnPasta.setFont(Theme.FONT_SMALL);
+            btnPasta.setBorder(new EmptyBorder(4, 10, 4, 10));
+            btnPasta.setToolTipText("Abrir pasta que contém o arquivo");
+            btnPasta.addActionListener(e ->
+                    fileManager.abrirPasta(SwingUtilities.getWindowAncestor(PainelCartaoArquivo.this), arquivo));
+
+            JPanel botoes = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+            botoes.setOpaque(false);
+            botoes.add(btnAbrir);
+            botoes.add(btnSalvar);
+            botoes.add(btnPasta);
+
+            add(esquerda, BorderLayout.WEST);
+            add(botoes, BorderLayout.EAST);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            // Fundo arredondado
+            g2.setColor(corFundo);
+            g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 10, 10));
+            // Borda arredondada
+            g2.setColor(corBorda);
+            g2.setStroke(new BasicStroke(1.2f));
+            g2.draw(new RoundRectangle2D.Float(0.6f, 0.6f, getWidth() - 1.2f, getHeight() - 1.2f, 10, 10));
+            g2.dispose();
+            super.paintComponent(g);
         }
     }
 }
